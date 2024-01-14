@@ -1,124 +1,78 @@
-from tkinter import filedialog, messagebox
-import numpy as np
-from PIL import Image, ImageTk, ImageDraw
 import tkinter as tk
+from tkinter import colorchooser, filedialog, messagebox
+from PIL import Image, ImageDraw, ImageTk
 
 
-class ImageEditor:
-    def __init__(self):
-        self.root = tk.Tk()
+class PainterApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Painter App")
+
+        self.canvas = tk.Canvas(root, bg="white", width=800, height=600)
+        self.canvas.pack(expand=tk.YES, fill=tk.BOTH)
 
         # Create menu bar
-        menubar = tk.Menu(self.root)
+        menubar = tk.Menu(root)
         filemenu = tk.Menu(menubar, tearoff=0)
+        filemenu.add_command(label="New", command=self.new_canvas)
         filemenu.add_command(label="Open", command=self.open_image)
         filemenu.add_command(label="Save", command=self.save_image)
         menubar.add_cascade(label="File", menu=filemenu)
+
+        editmenu = tk.Menu(menubar, tearoff=0)
+        editmenu.add_command(label="Color", command=self.choose_color)
+        menubar.add_cascade(label="Edit", menu=editmenu)
+
         self.root.config(menu=menubar)
 
-        # Create canvas
-        self.canvas = tk.Canvas(self.root, width=800, height=600)
-        self.canvas.pack()
+        self.color = "black"
+        self.image = Image.new("RGB", (800, 600), "white")
+        self.draw = ImageDraw.Draw(self.image)
 
-        # Create buttons
-        self.flood_fill_button = tk.Button(
-            self.root, text="Flood Fill", command=self.start_flood_fill
-        )
-        self.flood_fill_button.pack()
+        self.canvas.bind("<B1-Motion>", self.paint)
+        self.canvas.bind("<ButtonRelease-1>", self.reset)
 
-        self.original_image = None
-        self.current_image = None
-        self.undo_stack = []
+    def paint(self, event):
+        x1, y1 = (event.x - 1), (event.y - 1)
+        x2, y2 = (event.x + 1), (event.y + 1)
 
-        self.root.mainloop()
+        self.canvas.create_oval(x1, y1, x2, y2, fill=self.color, width=2)
+        self.draw.line([x1, y1, x2, y2], fill=self.color, width=2)
 
-    def mouse_click_handler(self, event):
-        start_x, start_y = int(event.x), int(event.y)
-        target_color = self.current_image.getpixel((start_x, start_y))
-        replacement_color = (255, 0, 0)  # Replace with your desired replacement color
-        self.flood_fill(start_x, start_y, target_color, replacement_color)
-        self.canvas.unbind("<Button-1>")
+    def reset(self, event):
+        self.draw.line([event.x, event.y, event.x, event.y], fill=self.color, width=2)
 
-    def start_flood_fill(self):
-        if self.current_image:
-            messagebox.showinfo(
-                "Image Editor", "Click on the canvas to start flood fill."
-            )
-            self.canvas.bind("<Button-1>", self.mouse_click_handler)
+    def choose_color(self):
+        color = colorchooser.askcolor()[1]
+        if color:
+            self.color = color
 
-    # Rest of the code...
+    def new_canvas(self):
+        self.canvas.delete("all")
+        self.image = Image.new("RGB", (800, 600), "white")
+        self.draw = ImageDraw.Draw(self.image)
 
     def open_image(self):
         file_path = filedialog.askopenfilename(
             filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")]
         )
         if file_path:
-            self.original_image = Image.open(file_path)
-            self.current_image = self.original_image.copy()
-            self.display_image()
+            self.image = Image.open(file_path)
+            self.canvas.config(width=self.image.width, height=self.image.height)
+            self.canvas.create_image(
+                0, 0, anchor=tk.NW, image=ImageTk.PhotoImage(self.image)
+            )
 
     def save_image(self):
-        if self.current_image:
-            file_path = filedialog.asksaveasfilename(
-                defaultextension=".png",
-                filetypes=[("PNG", "*.png"), ("JPEG", "*.jpg;*.jpeg")],
-            )
-            if file_path:
-                self.current_image.save(file_path)
-                messagebox.showinfo("Image Editor", "Image saved successfully.")
-
-    def display_image(self):
-        if self.current_image:
-            self.canvas.delete("all")
-            image_width, image_height = self.current_image.size
-            if image_width > 800 or image_height > 600:
-                scale_factor = min(800 / image_width, 600 / image_height)
-                new_width = int(image_width * scale_factor)
-                new_height = int(image_height * scale_factor)
-                self.current_image = self.current_image.resize(
-                    (new_width, new_height), Image.ANTIALIAS
-                )
-            self.photo_image = ImageTk.PhotoImage(self.current_image)
-            self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo_image)
-
-    def flood_fill(self, x, y, target_color, replacement_color):
-        if self.current_image:
-            # Create a mask for visited pixels
-            mask = np.zeros(
-                (self.current_image.height, self.current_image.width), dtype=bool
-            )
-
-            def dfs(x, y):
-                # Check if the coordinates are within the bounds of the image
-                if 0 <= x < self.width and 0 <= y < self.height:
-                    # Check if the pixel at the current coordinates is of the target color
-                    if (
-                        mask[y, x]
-                        and self.current_image.getpixel((x, y)) == target_color
-                    ):
-                        # Change the color of the pixel to the replacement color
-                        self.current_image.putpixel((x, y), replacement_color)
-
-                        # Recursively call dfs for neighboring pixels
-                        dfs(x + 1, y)
-                        dfs(x - 1, y)
-                        dfs(x, y + 1)
-                        dfs(x, y - 1)
-
-            dfs(x, y)
-            self.display_image()
-
-    def cut_image(self, x1, y1, x2, y2):
-        if self.current_image:
-            self.undo_stack.append(self.current_image.copy())
-            self.current_image = self.current_image.crop((x1, y1, x2, y2))
-            self.display_image()
-
-    def undo(self):
-        if self.undo_stack:
-            self.current_image = self.undo_stack.pop()
-            self.display_image()
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".png", filetypes=[("PNG", "*.png")]
+        )
+        if file_path:
+            self.image.save(file_path)
+            messagebox.showinfo("Painter App", "Image saved successfully.")
 
 
-# Usage example
-editor = ImageEditor()
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = PainterApp(root)
+    root.mainloop()

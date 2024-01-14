@@ -9,6 +9,11 @@ class PainterApp:
         self.current_image = None
         self.original_image = None
         self.undo_stack = []
+        self.undo_button = tk.Button(root, text="Undo", command=self.undo)
+        self.undo_button.pack()
+        self.cut_button = tk.Button(root, text="Cut", command=self.cut_image)
+        self.cut_button.pack()
+
         # self.canvas.delete("all")
 
         self.root.title("Painter App")
@@ -43,12 +48,17 @@ class PainterApp:
 
         self.is_bucket_fill_active = False
 
-    """ def paint(self, event):
-        x1, y1 = (event.x - 1), (event.y - 1)
-        x2, y2 = (event.x + 1), (event.y + 1)
-        self.canvas.create_oval(x1, y1, x2, y2, fill=self.color, width=2)
-        self.draw.line([x1, y1, x2, y2], fill=self.color, width=2)
-"""
+        def paint(self, event):
+            x1, y1 = (event.x - 1), (event.y - 1)
+            x2, y2 = (event.x + 1), (event.y + 1)
+    
+            # Save the current state to the undo stack
+            self.undo_stack.append(self.image.copy())
+
+            self.canvas.create_oval(x1, y1, x2, y2, fill=self.color, width=2)
+            self.draw.line([x1, y1, x2, y2], fill=self.color, width=2)
+
+
 
     def reset(self, event):
         self.draw.line([event.x, event.y, event.x, event.y], fill=self.color, width=2)
@@ -86,6 +96,52 @@ class PainterApp:
         if file_path:
             self.image.save(file_path)
             messagebox.showinfo("Painter App", "Image saved successfully.")
+            
+    def cut_image(self):
+        # Prompt the user to select a rectangular region to cut
+        messagebox.showinfo("Painter App", "Click and drag to select the region to cut.")
+        rect = self.canvas.create_rectangle(0, 0, 0, 0, outline="black", width=2)
+
+        def on_drag_start(event):
+            nonlocal rect
+            x, y = event.x, event.y
+            self.canvas.coords(rect, x, y, x, y)
+
+        def on_dragging(event):
+            nonlocal rect
+            x, y = event.x, event.y
+            self.canvas.coords(rect, x, y)
+
+        def on_drag_end(event):
+            nonlocal rect
+            x, y = event.x, event.y
+            self.canvas.coords(rect, x, y, x, y)
+
+            # Get the coordinates of the selected region
+            x1, y1, x2, y2 = self.canvas.coords(rect)
+
+            # Crop the image to the selected region
+            cropped_image = self.current_image.crop((x1, y1, x2, y2))
+
+            # Save the cropped image
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".png", filetypes=[("PNG", "*.png")]
+            )
+            if file_path:
+                cropped_image.save(file_path)
+                messagebox.showinfo("Painter App", "Cropped image saved successfully.")
+
+            # Remove the rectangle
+            self.canvas.delete(rect)
+
+        # Bind events for dragging
+        self.canvas.bind("<B1-Motion>", on_dragging)
+        self.canvas.bind("<ButtonRelease-1>", on_drag_end)
+        self.canvas.bind("<Button-1>", on_drag_start)
+    def undo(self):
+        if self.undo_stack:
+            self.image = self.undo_stack.pop()
+            self.display_image()
 
     def display_image(self):
         if self.current_image:
@@ -112,11 +168,14 @@ class PainterApp:
             self.canvas.unbind("<Button-1>")
 
     def bucket_fill_handler(self, event):
+    
         x, y = event.x, event.y
         target_color = self.image.getpixel((x, y))
         replacement_color = self.color
         self.bucket_fill(x, y, target_color, replacement_color)
+        self.is_bucket_fill_active = False  # Reset the flag
         self.canvas.unbind("<Button-1>")
+
 
     def bucket_fill(self, x, y, target_color, replacement_color):
         if self.image:
@@ -127,26 +186,27 @@ class PainterApp:
             def is_valid(x, y):
                 return 0 <= x < width and 0 <= y < height
 
+                
             def dfs(x, y):
-                if (
-                    not (0 <= x < width)
-                    or not (0 <= y < height)
-                    or (x, y) in visited
-                    or self.image.getpixel((x, y)) == (0, 0, 0)
-                ):
+                if not is_valid(x, y) or (x, y) in visited or self.image.getpixel((x, y)) != target_color:
                     return
 
                 visited.add((x, y))
 
-                if self.image.getpixel((x, y)) == target_color:
-                    self.image.putpixel((x, y), replacement_color_rgb)
-                    self.draw.point((x, y), fill=replacement_color_rgb)
+                self.image.putpixel((x, y), replacement_color_rgb)
+                self.draw.point((x, y), fill=replacement_color_rgb)
 
-                    # Recursively call dfs for neighboring pixels
+    # Recursively call dfs for neighboring pixels
+                if x + 1 < self.image.width:
                     dfs(x + 1, y)
+                if x - 1 >= 0:
                     dfs(x - 1, y)
+                if y + 1 < self.image.height:
                     dfs(x, y + 1)
+                if y - 1 >= 0:
                     dfs(x, y - 1)
+
+
 
             dfs(x, y)
 
